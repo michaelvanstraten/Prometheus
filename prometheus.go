@@ -3,15 +3,9 @@ package prometheus
 import (
 	"encoding/json"
 	"io/ioutil"
-	"time"
 	"github.com/julienschmidt/httprouter"
 	"github.com/michaelvanstraten/prometheus/rendering"
 )
-
-type UserToken struct {
-	UserID int
-	CreatedAt time.Time
-}
 
 type AppConfig struct {
 }

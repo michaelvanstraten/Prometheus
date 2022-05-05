@@ -7,19 +7,35 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+type CollectionMemberType int
+
+const (
+	RedisString = iota
+	RedisList = iota
+	RedisHashmap = iota
+	RedisSet = iota
+	RedisSortedSet = iota
+	RedisBitmap = iota
+)
+
+type CollectionOptions struct {
+	collectionName string
+	redisClient *redis.Client
+}
+
 type Collection struct {
 	db *redis.Client
-	basename string
+	collectionName string
 	Sets map[string]Set
 }
 
-func NewColletion(ColletionName string, DBConnection *redis.Client) *Collection {
+func NewColletion(ColletionName string, RedisClient *redis.Client) *Collection {
 	var newColletion = Collection{
-		db : DBConnection,
-		basename: ColletionName,
+		db : RedisClient,
+		collectionName: ColletionName,
 		Sets: make(map[string]Set),
 	}
-	newColletion.Sets["MASTER"] = Set{db: DBConnection, setName: ColletionName  + "s"}
+	newColletion.Sets["MASTER"] = Set{db: RedisClient, setName: ColletionName  + "s"}
 	return &newColletion
 }
 
@@ -31,22 +47,28 @@ func (c *Collection) AddSubset(SetName string) {
 }
 
 func (c *Collection) GetMember(Identifier string, MemberInterface interface{}, Fields ...string) error {
-	var Identifiers []string
-	var MemberInterfaces []interface{}
-	MemberInterfaces = append(MemberInterfaces, MemberInterface)
-	Identifiers = append(Identifiers, Identifier)
-	var errs = c.getMembers(Identifiers, MemberInterfaces, Fields...)
-	return errs[0]
+	var context = context.Background()
+	return c.db.HMGet(context, c.collectionName + ":" + Identifier, Fields...).Scan(MemberInterface)
 }
 
 func (c *Collection) GetMembers(MemberInterfaces []interface{}, Set Set, Offset int64, Fields ...string) []error {
+	var context = context.Background()
 	var errs []error
 	var Identifiers, err = Set.GetMembers(int64(len(MemberInterfaces)), Offset)
  	if err != nil {
 		errs = append(errs, err)
 		return errs
 	}
-	errs = c.getMembers(Identifiers, MemberInterfaces, Fields...)
+	var li, lm = len(Identifiers), len(MemberInterfaces)
+	if len(Fields) > 0 && li <= lm {
+		for i := 0; i < li && i < lm ; i++ {
+			errs = append(errs, c.db.HMGet(context, c.collectionName + ":" + Identifiers[i], Fields...).Scan(MemberInterfaces[i]))
+		}
+	} else if li <= lm {
+		for i := 0; i < li && i < lm; i++ {
+			errs = append(errs, c.db.HGetAll(context, c.collectionName + ":" + Identifiers[i]).Scan(MemberInterfaces[i]))
+		}
+	}
 	return errs
 }
 
@@ -54,7 +76,7 @@ func (c *Collection) AddMemberWithCustomIdentifier(Identifier interface{}, Value
 	var context = context.Background()
 	var addItem = func(tx *redis.Tx) error {
 		if returnCode, err := c.Sets["MASTER"].AddMember(fmt.Sprint(Identifier)); err == nil && returnCode == 1 {
-			err = tx.HSet(context, c.basename + ":" + fmt.Sprint(Identifier), Values...).Err()
+			err = tx.HSet(context, c.collectionName + ":" + fmt.Sprint(Identifier), Values...).Err()
 			if err != nil {
 				return err
 			}
@@ -62,10 +84,10 @@ func (c *Collection) AddMemberWithCustomIdentifier(Identifier interface{}, Value
 		} else if err != nil {
 			return err
 		}
-		return errors.New("identifier: " + fmt.Sprint(Identifier) + " is part of collection " + c.basename + "s.")
+		return errors.New("identifier: " + fmt.Sprint(Identifier) + " is part of collection " + c.collectionName + "s.")
 	}
 	for {
-		var err = c.db.Watch(context, addItem, c.basename + "s")
+		var err = c.db.Watch(context, addItem, c.collectionName + "s")
 		if err == redis.TxFailedErr {
 			continue
 		} else {
@@ -82,7 +104,7 @@ func (c *Collection) AddMember(Values ...interface{}) (string, error) {
 		if err != nil {
 			return err
 		}
-		err = tx.HSet(context, c.basename + ":" + fmt.Sprint(Identifier), Values...).Err()
+		err = tx.HSet(context, c.collectionName + ":" + fmt.Sprint(Identifier), Values...).Err()
 		if err != nil {
 			return err
 		} 
@@ -100,33 +122,17 @@ func (c *Collection) AddMember(Values ...interface{}) (string, error) {
 
 func (c *Collection) SetValueOnMember(Identifier string, Values ...interface{}) error {
 	var context = context.Background()
-	return c.db.HMSet(context, c.basename + Identifier, Values...).Err()
+	return c.db.HMSet(context, c.collectionName + Identifier, Values...).Err()
 }
 
 func (c *Collection) RemoveMembers(Identifiers ...string) []error {
 	var context = context.Background()
 	var errs []error
 	for i := 0; i < len(Identifiers); i++ {
-		errs = append(errs, c.db.HDel(context, c.basename + ":" + Identifiers[i]).Err()) 
+		errs = append(errs, c.db.HDel(context, c.collectionName + ":" + Identifiers[i]).Err()) 
 	}
 	for _, set := range c.Sets {
 		errs = append(errs, set.RemoveMembers(Identifiers...))
-	}
-	return errs
-}
-
-func (c *Collection) getMembers(Identifiers []string, MemberInterfaces []interface{}, Fields ...string) []error {
-	var context = context.Background()
-	var errs =  []error{}
-	var li, lm = len(Identifiers), len(MemberInterfaces)
-	if len(Fields) > 0 && li <= lm {
-		for i := 0; i < li && i < lm ; i++ {
-			errs = append(errs, c.db.HMGet(context, c.basename + ":" + Identifiers[i], Fields...).Scan(MemberInterfaces[i]))
-		}
-	} else if li <= lm {
-		for i := 0; i < li && i < lm; i++ {
-			errs = append(errs, c.db.HGetAll(context, c.basename + ":" + Identifiers[i]).Scan(MemberInterfaces[i]))
-		}
 	}
 	return errs
 }
