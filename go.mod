@@ -3,7 +3,7 @@ module github.com/michaelvanstraten/prometheus
 go 1.18
 
 require (
-	github.com/ethereum/go-ethereum v1.10.17
+	github.com/ethereum/go-ethereum v1.10.21
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.4.2

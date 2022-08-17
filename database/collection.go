@@ -29,14 +29,14 @@ type Collection struct {
 	Sets map[string]Set
 }
 
-func NewColletion(ColletionName string, RedisClient *redis.Client) *Collection {
-	var newColletion = Collection{
+func NewCollection(CollectionName string, RedisClient *redis.Client) *Collection {
+	var newCollection = Collection{
 		db : RedisClient,
-		collectionName: ColletionName,
+		collectionName: CollectionName,
 		Sets: make(map[string]Set),
 	}
-	newColletion.Sets["MASTER"] = Set{db: RedisClient, setName: ColletionName  + "s"}
-	return &newColletion
+	newCollection.Sets["MASTER"] = Set{db: RedisClient, setName: CollectionName  + "s"}
+	return &newCollection
 }
 
 func (c *Collection) AddSubset(SetName string) {

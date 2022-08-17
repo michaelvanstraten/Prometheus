@@ -18,7 +18,7 @@ func main() {
 			Addr: "127.0.0.1:6379",
 		},
 	)
-	var users = database.NewColletion("user", db)
+	var users = database.NewCollection("user", db)
 
 	var user = make([]User, 3)
 	var p = make([]interface{}, 3)
